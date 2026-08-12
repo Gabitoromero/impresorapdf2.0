@@ -15,7 +15,7 @@ QR_MARGEN = 40
 
 
 def insertar_qr(pdf_path: Path, qr_image_path: Path) -> None:
-    """Inserta la imagen QR (jpg/png) en la última página del PDF, en la esquina inferior derecha."""
+    """Inserta la imagen QR (jpg/png) en todas las páginas del PDF, en la esquina inferior derecha."""
     x = ANCHO_PAGINA - QR_MARGEN - QR_ANCHO
     y = QR_MARGEN
 
@@ -27,7 +27,8 @@ def insertar_qr(pdf_path: Path, qr_image_path: Path) -> None:
     overlay_page = PdfReader(overlay_buffer).pages[0]
 
     writer = PdfWriter(clone_from=str(pdf_path))
-    writer.pages[-1].merge_page(overlay_page)
+    for pagina in writer.pages:
+        pagina.merge_page(overlay_page)
 
     with open(pdf_path, "wb") as archivo_salida:
         writer.write(archivo_salida)

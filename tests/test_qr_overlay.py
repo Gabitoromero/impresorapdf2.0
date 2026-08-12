@@ -14,7 +14,7 @@ def crear_qr_de_prueba(qr_path: Path) -> None:
     Image.new("RGB", (100, 100), color="black").save(qr_path)
 
 
-def test_inserta_el_qr_solo_en_la_ultima_pagina(tmp_path):
+def test_inserta_el_qr_en_todas_las_paginas(tmp_path):
     txt_path = tmp_path / "entrada.txt"
     txt_path.write_text("\n".join(f"linea {i}" for i in range(100)))  # fuerza 2+ páginas
 
@@ -29,7 +29,5 @@ def test_inserta_el_qr_solo_en_la_ultima_pagina(tmp_path):
     paginas = PdfReader(pdf_path).pages
     assert len(paginas) > 1
 
-    for pagina in paginas[:-1]:
-        assert len(pagina.images) == 0
-
-    assert len(paginas[-1].images) == 1
+    for pagina in paginas:
+        assert len(pagina.images) == 1
