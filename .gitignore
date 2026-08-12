@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Env / secrets
+.env
+
+# Editor / OS
+.DS_Store
+
+# Tooling cache
+.atl/
+
+# Client materials (not for repo)
+chatMarceIA.pdf
