@@ -9,7 +9,14 @@ Especificación completa (requisitos y tareas): Notion — proyecto "Impresor PD
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt          # solo lo necesario para correr en el servidor
+pip install -r requirements-dev.txt      # + pytest, para desarrollo local
+```
+
+## Tests
+
+```bash
+pytest
 ```
 
 ## Uso
