@@ -1,10 +1,21 @@
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from pypdf import PdfReader
 
 SRC_MAIN = Path(__file__).resolve().parent.parent / "src" / "main.py"
+
+GPCL6_BIN = os.environ.get("GPCL6_BIN", "gpcl6")
+_gpcl6_disponible = shutil.which(GPCL6_BIN) is not None or Path(GPCL6_BIN).is_file()
+
+pytestmark = pytest.mark.skipif(
+    not _gpcl6_disponible,
+    reason="gpcl6 no disponible en este entorno (definir GPCL6_BIN o instalarlo en PATH)",
+)
 
 
 def test_convierte_sin_qr_no_falla_y_no_agrega_imagenes(tmp_path):

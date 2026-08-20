@@ -1,51 +1,53 @@
-"""Lectura de TXT y generación básica de PDF (Requisito: Formato salida PDF)."""
+"""Conversión de TXT con comandos PCL reales a PDF, delegando en GhostPCL."""
 
+import os
+import subprocess
+import tempfile
 from pathlib import Path
 
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
+from pcl_preprocessor import traducir_toggle_condensado
 
-from control_codes import limpiar_codigos_control
-from marcas_tipografia import TAMANIO_DEFECTO, nombre_fuente_reportlab, parsear_marcas
-
-ANCHO_PAGINA, ALTO_PAGINA = A4
-MARGEN_IZQUIERDO = 40
-MARGEN_SUPERIOR = 40
-MARGEN_INFERIOR = 40
-ALTO_LINEA = 14
-INTERLINEA = 1.3
+GPCL6_BIN = os.environ.get("GPCL6_BIN", "gpcl6")
 
 
 def convertir_txt_a_pdf(txt_path: Path, pdf_path: Path) -> None:
-    """Lee un archivo TXT y genera un PDF con el mismo contenido, una línea del txt por línea del PDF.
+    """Convierte un TXT (con o sin comandos PCL) en un PDF usando GhostPCL (gpcl6).
 
-    Interpreta las marcas de tipografía del texto (ver docs/formato-marcas-tipografia.md)
-    para aplicar negrita, cursiva, tamaño y fuente. Si el texto no entra en una
-    sola hoja A4, sigue en páginas siguientes.
+    Progress inyecta comandos PCL reales (HP) en el TXT para controlar tamaño de
+    fuente, negrita y layout. GhostPCL los interpreta directamente y genera el PDF
+    ya formateado, sin que este proyecto tenga que reimplementar un intérprete PCL.
+
+    Los TXT reales del cliente no traen un comando PCL explícito de tamaño de papel,
+    así que gpcl6 cae en su default (Letter, EEUU). La impresora física siempre
+    imprime en A4, así que se fuerza vía PJL (`-sPAPERSIZE=a4` no funciona en gpcl6:
+    bug conocido https://bugs.ghostscript.com/show_bug.cgi?id=706207).
+
+    Antes de pasarle el archivo a gpcl6 se traducen los CHR(15)/CHR(18) sueltos
+    (toggle de modo condensado, legado de impresoras de matriz de puntos que Marce
+    sigue usando) a su comando PCL real equivalente (ver pcl_preprocessor.py) —
+    gpcl6 no reconoce esos bytes sueltos como comando de tamaño de letra.
     """
-    texto = limpiar_codigos_control(txt_path.read_text(encoding="latin-1"))
-    lineas = texto.splitlines()
+    datos_traducidos = traducir_toggle_condensado(txt_path.read_bytes())
 
-    pdf = canvas.Canvas(str(pdf_path), pagesize=A4)
-    y = ALTO_PAGINA - MARGEN_SUPERIOR
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as txt_temporal:
+        txt_temporal.write(datos_traducidos)
+        txt_temporal_path = Path(txt_temporal.name)
 
-    for linea in lineas:
-        tramos = parsear_marcas(linea)
-        tamanios = [tramo.tamanio or TAMANIO_DEFECTO for tramo in tramos]
-        alto_linea = max(ALTO_LINEA, max(tamanios, default=TAMANIO_DEFECTO) * INTERLINEA)
+    try:
+        resultado = subprocess.run(
+            [
+                GPCL6_BIN,
+                "-sDEVICE=pdfwrite",
+                "-J@PJL SET PAPER=A4",
+                "-o",
+                str(pdf_path),
+                str(txt_temporal_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        txt_temporal_path.unlink(missing_ok=True)
 
-        if y < MARGEN_INFERIOR:
-            pdf.showPage()
-            y = ALTO_PAGINA - MARGEN_SUPERIOR
-
-        x = MARGEN_IZQUIERDO
-        for tramo in tramos:
-            fuente = nombre_fuente_reportlab(tramo)
-            tamanio = tramo.tamanio or TAMANIO_DEFECTO
-            pdf.setFont(fuente, tamanio)
-            pdf.drawString(x, y, tramo.texto)
-            x += pdf.stringWidth(tramo.texto, fuente, tamanio)
-
-        y -= alto_linea
-
-    pdf.save()
+    if resultado.returncode != 0:
+        raise RuntimeError(f"gpcl6 falló (código {resultado.returncode}): {resultado.stderr}")
