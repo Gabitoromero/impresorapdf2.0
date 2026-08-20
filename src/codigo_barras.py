@@ -19,6 +19,7 @@ from pathlib import Path
 
 import barcode
 from barcode.writer import ImageWriter
+from PIL import Image
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
@@ -26,8 +27,7 @@ PREFIJO_CODIGO_BARRAS = bytes([27, 40, 66])  # ESC ( B
 _LARGO_PARAMETROS = 8  # n1, n2, k, m, s, v1, v2, c (formato fijo del comando Epson ESC/P2)
 _PATRON = re.compile(re.escape(PREFIJO_CODIGO_BARRAS) + rb".{%d}([0-9]+)\x0c?" % _LARGO_PARAMETROS, re.DOTALL)
 
-CODBARRAS_ANCHO = 200
-CODBARRAS_ALTO = 40
+CODBARRAS_ALTO = 58
 CODBARRAS_MARGEN = 15
 
 
@@ -52,9 +52,24 @@ def generar_imagen_codigo_de_barras(digitos: str, destino: Path) -> Path:
     return Path(ruta_generada)
 
 
-def calcular_posicion_codigo_barras(ancho_pagina: float) -> tuple[float, float]:
+def calcular_dimensiones_codigo_barras(
+    imagen_path: Path, alto_objetivo: float = CODBARRAS_ALTO
+) -> tuple[float, float]:
+    """Ancho y alto para dibujar el código de barras manteniendo su proporción real.
+
+    Con un ancho fijo, un código de más dígitos queda con las barras más
+    apretadas (ilegible). Se fija el alto y se deriva el ancho de la proporción
+    real de la imagen generada, así el ancho crece con la cantidad de dígitos.
+    """
+    with Image.open(imagen_path) as imagen:
+        ancho_px, alto_px = imagen.size
+    ancho_objetivo = alto_objetivo * (ancho_px / alto_px)
+    return ancho_objetivo, alto_objetivo
+
+
+def calcular_posicion_codigo_barras(ancho_pagina: float, ancho_codigo: float) -> tuple[float, float]:
     """Esquina inferior izquierda del código de barras, fijo abajo a la derecha de la página."""
-    x = ancho_pagina - CODBARRAS_MARGEN - CODBARRAS_ANCHO
+    x = ancho_pagina - CODBARRAS_MARGEN - ancho_codigo
     y = CODBARRAS_MARGEN
     return x, y
 
@@ -65,15 +80,17 @@ def insertar_codigo_de_barras(pdf_path: Path, digitos: str) -> None:
     generar_imagen_codigo_de_barras(digitos, imagen_path)
 
     try:
+        ancho_codigo, alto_codigo = calcular_dimensiones_codigo_barras(imagen_path)
+
         reader = PdfReader(str(pdf_path))
         ancho_pagina = float(reader.pages[0].mediabox.width)
         alto_pagina = float(reader.pages[0].mediabox.height)
-        x, y = calcular_posicion_codigo_barras(ancho_pagina)
+        x, y = calcular_posicion_codigo_barras(ancho_pagina, ancho_codigo)
 
         overlay_buffer = io.BytesIO()
         overlay_canvas = canvas.Canvas(overlay_buffer, pagesize=(ancho_pagina, alto_pagina))
         overlay_canvas.drawImage(
-            str(imagen_path), x, y, width=CODBARRAS_ANCHO, height=CODBARRAS_ALTO, mask="auto"
+            str(imagen_path), x, y, width=ancho_codigo, height=alto_codigo, mask="auto"
         )
         overlay_canvas.save()
         overlay_buffer.seek(0)

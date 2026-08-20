@@ -7,8 +7,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from codigo_barras import (
     CODBARRAS_ALTO,
-    CODBARRAS_ANCHO,
     CODBARRAS_MARGEN,
+    calcular_dimensiones_codigo_barras,
     calcular_posicion_codigo_barras,
     extraer_codigo_de_barras,
     generar_imagen_codigo_de_barras,
@@ -59,9 +59,35 @@ def test_genera_una_imagen_itf_valida(tmp_path):
     assert destino.stat().st_size > 0
 
 
+def test_calcula_dimensiones_proporcionales_al_ancho_real(tmp_path):
+    destino = tmp_path / "barras.png"
+    generar_imagen_codigo_de_barras(DIGITOS_REALES, destino)
+
+    ancho, alto = calcular_dimensiones_codigo_barras(destino)
+
+    assert alto == CODBARRAS_ALTO
+
+    from PIL import Image
+
+    proporcion_real = Image.open(destino).size[0] / Image.open(destino).size[1]
+    assert abs(ancho / alto - proporcion_real) < 0.01
+
+
+def test_codigo_mas_largo_da_un_ancho_mayor(tmp_path):
+    corto = tmp_path / "corto.png"
+    largo = tmp_path / "largo.png"
+    generar_imagen_codigo_de_barras("1234", corto)
+    generar_imagen_codigo_de_barras(DIGITOS_REALES, largo)
+
+    ancho_corto, _ = calcular_dimensiones_codigo_barras(corto)
+    ancho_largo, _ = calcular_dimensiones_codigo_barras(largo)
+
+    assert ancho_largo > ancho_corto
+
+
 def test_calcula_posicion_abajo_a_la_derecha():
-    x, y = calcular_posicion_codigo_barras(ancho_pagina=595)
-    assert x == 595 - CODBARRAS_MARGEN - CODBARRAS_ANCHO
+    x, y = calcular_posicion_codigo_barras(ancho_pagina=595, ancho_codigo=250)
+    assert x == 595 - CODBARRAS_MARGEN - 250
     assert y == CODBARRAS_MARGEN
 
 
