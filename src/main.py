@@ -3,6 +3,7 @@
 import argparse
 from pathlib import Path
 
+from codigo_barras import insertar_codigo_de_barras
 from qr_overlay import insertar_qr
 from txt_to_pdf import convertir_txt_a_pdf
 
@@ -17,9 +18,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    convertir_txt_a_pdf(args.txt, args.out)
+    digitos_codigo_barras = convertir_txt_a_pdf(args.txt, args.out)
     if args.qr is not None:
         insertar_qr(args.out, args.qr)
+    if digitos_codigo_barras is not None:
+        insertar_codigo_de_barras(args.out, digitos_codigo_barras)
 
 
 if __name__ == "__main__":

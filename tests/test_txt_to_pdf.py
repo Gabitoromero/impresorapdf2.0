@@ -73,6 +73,34 @@ def test_traduce_chr15_chr18_a_cambio_de_tamanio_real(tmp_path):
     assert "condensado" in texto
 
 
+def test_extrae_codigo_de_barras_y_no_lo_manda_a_gpcl6(tmp_path):
+    txt_path = tmp_path / "entrada.txt"
+    # ESC ( B n1 n2 k m s v1 v2 c data (Epson ESC/P2, ver codigo_barras.py).
+    comando_codbarras = bytes([27, 40, 66, 46, 1, 2, 2, 254, 54, 0, 0]) + b"86338782841062"
+    txt_path.write_bytes(b"\x1bEFACTURA A\n" + comando_codbarras + b"\x0c")
+
+    pdf_path = tmp_path / "salida.pdf"
+    digitos = convertir_txt_a_pdf(txt_path, pdf_path)
+
+    assert digitos == "86338782841062"
+
+    texto = PdfReader(pdf_path).pages[0].extract_text()
+    assert "FACTURA A" in texto
+    # nada del comando crudo (ni los bytes de control, ni los propios dígitos
+    # tal cual, ya que gpcl6 nunca debe llegar a verlos) quedó en el PDF
+    assert "86338782841062" not in texto
+
+
+def test_devuelve_none_si_no_hay_codigo_de_barras(tmp_path):
+    txt_path = tmp_path / "entrada.txt"
+    txt_path.write_text("Hola Marce")
+
+    pdf_path = tmp_path / "salida.pdf"
+    digitos = convertir_txt_a_pdf(txt_path, pdf_path)
+
+    assert digitos is None
+
+
 def test_lanza_error_si_el_txt_de_entrada_no_existe(tmp_path):
     pdf_path = tmp_path / "salida.pdf"
 

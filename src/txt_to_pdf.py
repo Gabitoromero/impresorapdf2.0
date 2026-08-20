@@ -5,13 +5,18 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from codigo_barras import extraer_codigo_de_barras
 from pcl_preprocessor import traducir_toggle_condensado
 
 GPCL6_BIN = os.environ.get("GPCL6_BIN", "gpcl6")
 
 
-def convertir_txt_a_pdf(txt_path: Path, pdf_path: Path) -> None:
+def convertir_txt_a_pdf(txt_path: Path, pdf_path: Path) -> str | None:
     """Convierte un TXT (con o sin comandos PCL) en un PDF usando GhostPCL (gpcl6).
+
+    Devuelve los dígitos del código de barras del CAE si el TXT traía uno (ver
+    codigo_barras.py), o `None` si no había. Quien llame a esta función es
+    responsable de pegar el código de barras en el PDF con `insertar_codigo_de_barras`.
 
     Progress inyecta comandos PCL reales (HP) en el TXT para controlar tamaño de
     fuente, negrita y layout. GhostPCL los interpreta directamente y genera el PDF
@@ -27,7 +32,10 @@ def convertir_txt_a_pdf(txt_path: Path, pdf_path: Path) -> None:
     sigue usando) a su comando PCL real equivalente (ver pcl_preprocessor.py) —
     gpcl6 no reconoce esos bytes sueltos como comando de tamaño de letra.
     """
-    datos_traducidos = traducir_toggle_condensado(txt_path.read_bytes())
+    datos_sin_codigo_barras, digitos_codigo_barras = extraer_codigo_de_barras(
+        txt_path.read_bytes()
+    )
+    datos_traducidos = traducir_toggle_condensado(datos_sin_codigo_barras)
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as txt_temporal:
         txt_temporal.write(datos_traducidos)
@@ -51,3 +59,5 @@ def convertir_txt_a_pdf(txt_path: Path, pdf_path: Path) -> None:
 
     if resultado.returncode != 0:
         raise RuntimeError(f"gpcl6 falló (código {resultado.returncode}): {resultado.stderr}")
+
+    return digitos_codigo_barras
