@@ -4,6 +4,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 from codigo_barras import extraer_codigo_de_barras
 from pcl_preprocessor import traducir_toggle_condensado
@@ -11,7 +12,7 @@ from pcl_preprocessor import traducir_toggle_condensado
 GPCL6_BIN = os.environ.get("GPCL6_BIN", "gpcl6")
 
 
-def convertir_txt_a_pdf(txt_path: Path, pdf_path: Path) -> str | None:
+def convertir_txt_a_pdf(txt_path: Path, pdf_path: Path) -> Optional[str]:
     """Convierte un TXT (con o sin comandos PCL) en un PDF usando GhostPCL (gpcl6).
 
     Devuelve los dígitos del código de barras del CAE si el TXT traía uno (ver
@@ -51,11 +52,13 @@ def convertir_txt_a_pdf(txt_path: Path, pdf_path: Path) -> str | None:
                 str(pdf_path),
                 str(txt_temporal_path),
             ],
-            capture_output=True,
-            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
         )
     finally:
-        txt_temporal_path.unlink(missing_ok=True)
+        if txt_temporal_path.exists():
+            txt_temporal_path.unlink()
 
     if resultado.returncode != 0:
         raise RuntimeError(f"gpcl6 falló (código {resultado.returncode}): {resultado.stderr}")

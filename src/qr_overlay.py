@@ -2,6 +2,7 @@
 
 import io
 from pathlib import Path
+from typing import Tuple
 
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
@@ -11,7 +12,7 @@ QR_ALTO = 80
 QR_MARGEN = 15
 
 
-def calcular_posicion_qr() -> tuple[float, float]:
+def calcular_posicion_qr() -> Tuple[float, float]:
     """Esquina inferior izquierda del QR, fijo en la esquina inferior izquierda de la página.
 
     Va a la izquierda (no a la derecha) porque Marce agrega el código de barras

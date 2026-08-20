@@ -16,6 +16,7 @@ punto de venta(4) + CAE(14) + vencimiento CAE(8) + dígito verificador(1) = 40.
 import io
 import re
 from pathlib import Path
+from typing import Optional, Tuple
 
 import barcode
 from barcode.writer import ImageWriter
@@ -31,7 +32,7 @@ CODBARRAS_ALTO = 58
 CODBARRAS_MARGEN = 15
 
 
-def extraer_codigo_de_barras(datos: bytes) -> tuple[bytes, str | None]:
+def extraer_codigo_de_barras(datos: bytes) -> Tuple[bytes, Optional[str]]:
     """Saca el comando de código de barras del TXT y devuelve los dígitos que codificaba.
 
     Si no hay comando, devuelve los datos sin cambios y `None`.
@@ -54,7 +55,7 @@ def generar_imagen_codigo_de_barras(digitos: str, destino: Path) -> Path:
 
 def calcular_dimensiones_codigo_barras(
     imagen_path: Path, alto_objetivo: float = CODBARRAS_ALTO
-) -> tuple[float, float]:
+) -> Tuple[float, float]:
     """Ancho y alto para dibujar el código de barras manteniendo su proporción real.
 
     Con un ancho fijo, un código de más dígitos queda con las barras más
@@ -67,7 +68,7 @@ def calcular_dimensiones_codigo_barras(
     return ancho_objetivo, alto_objetivo
 
 
-def calcular_posicion_codigo_barras(ancho_pagina: float, ancho_codigo: float) -> tuple[float, float]:
+def calcular_posicion_codigo_barras(ancho_pagina: float, ancho_codigo: float) -> Tuple[float, float]:
     """Esquina inferior izquierda del código de barras, fijo abajo a la derecha de la página."""
     x = ancho_pagina - CODBARRAS_MARGEN - ancho_codigo
     y = CODBARRAS_MARGEN
@@ -103,4 +104,5 @@ def insertar_codigo_de_barras(pdf_path: Path, digitos: str) -> None:
         with open(pdf_path, "wb") as archivo_salida:
             writer.write(archivo_salida)
     finally:
-        imagen_path.unlink(missing_ok=True)
+        if imagen_path.exists():
+            imagen_path.unlink()
