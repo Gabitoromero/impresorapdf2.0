@@ -44,8 +44,25 @@ def forzar_retorno_automatico(datos: bytes) -> bytes:
 # a pitch condensado (16.67cpi) el margen físico no-imprimible de A4 que emula gpcl6
 # (~6mm por lado, estándar de la familia HP LaserJet) deja exactamente 130 columnas
 # utilizables — no es negociable vía flags de gpcl6, se probó con -H0x0x0x0 sin efecto.
-COLUMNAS_MAX_PITCH_CONDENSADO = 130
-ANCHO_UTIL_A4_PULGADAS = COLUMNAS_MAX_PITCH_CONDENSADO / (100 / 6)  # = 7.8"
+# Se confirmó por separado (misma técnica) que a pitch normal (10cpi) el límite real
+# es 78 columnas, exactamente lo que da la misma fórmula — el ancho útil de A4 es el
+# mismo para ambos pitches (7.8"), sólo cambia cuántas columnas entran a cada cpi.
+ANCHO_UTIL_A4_PULGADAS = 7.8
+
+# cpi estándar de cada pitch que Marce define en setlaser.i (variables wlcno / wlcsi).
+_CPI_POR_COMANDO_PITCH = {
+    PCL_PITCH_NORMAL: 10.0,
+    PCL_PITCH_CONDENSADO: 100 / 6,  # 16.6667
+}
+
+# Colchón de seguridad SÓLO para calcular el pitch de reemplazo (no para decidir si
+# hace falta reemplazar: ahí se usa el límite real de 7.8" tal cual). Se vio en un
+# documento real completo (no en una línea de calibración aislada) que calcular el
+# pitch justo al límite exacto —e incluso con un carácter de margen— igual perdía el
+# último carácter: efecto acumulativo de redondeo/selección de fuente de gpcl6 al
+# haber más contenido/páginas previas en el mismo documento. Se ajustó empíricamente
+# contra ese documento real hasta que dejó de cortarse (0.1" no alcanzó, 0.2" sí).
+MARGEN_SEGURIDAD_PULGADAS = 0.2
 
 # Una secuencia PCL termina en la primera mayúscula (o @): ESC & k 2 S -> el
 # terminador real es "S", no "k" (que es el caracter de grupo, minúscula, parte
@@ -56,28 +73,76 @@ _PATRON_ESCAPE_PCL = re.compile(rb"\x1b[^\x1b]*?[A-Z@]")
 
 def _ancho_maximo_de_linea(datos: bytes) -> int:
     texto_visible = _PATRON_ESCAPE_PCL.sub(b"", datos)
-    return max((len(linea) for linea in texto_visible.split(b"\n")), default=0)
+    # rstrip: espacios de relleno al final de línea (común en reportes de Progress,
+    # columnas paddeadas a ancho fijo) no imprimen nada visible, así que no deberían
+    # forzar una compresión que en los hechos no hace falta.
+    return max((len(linea.rstrip()) for linea in texto_visible.split(b"\n")), default=0)
 
 
-def asegurar_ancho_condensado(datos: bytes) -> bytes:
-    """Si el pitch condensado estándar no alcanza para la línea más ancha del
-    documento, lo reemplaza por un pitch a medida (comando PCL HMI, `ESC&k#H`,
-    # = 120 / cpi deseado — HP PCL5 Technical Reference) calculado para que esa
-    línea entre completa en el ancho útil de A4. Documentos que ya entran, o que
-    no usan pitch condensado, quedan sin tocar.
+_PATRON_TOGGLE_PITCH = re.compile(
+    b"(" + b"|".join(re.escape(c) for c in _CPI_POR_COMANDO_PITCH) + b")"
+)
+
+
+def _anchos_maximos_por_pitch(datos: bytes):
+    """Recorre el documento y devuelve, para cada comando de pitch (normal o
+    condensado), el ancho de la línea más ancha entre TODOS los tramos donde
+    ese pitch estuvo activo. Cada pitch se evalúa por separado: una línea
+    ancha bajo condensado no debe afectar la decisión sobre el pitch normal
+    (y viceversa), porque cada uno tiene su propio límite de columnas.
+
+    El contenido ANTES del primer toggle explícito (si lo hay) se cuenta como
+    pitch normal: es el default implícito de gpcl6 sin ningún comando de pitch
+    — medido empíricamente, entran exactamente las mismas 78 columnas que con
+    `ESC&k0S` explícito.
     """
-    if PCL_PITCH_CONDENSADO not in datos:
-        return datos
+    anchos = {}
+    pitch_activo = PCL_PITCH_NORMAL
+    for parte in _PATRON_TOGGLE_PITCH.split(datos):
+        if parte in _CPI_POR_COMANDO_PITCH:
+            pitch_activo = parte
+            continue
+        ancho = _ancho_maximo_de_linea(parte)
+        anchos[pitch_activo] = max(anchos.get(pitch_activo, 0), ancho)
+    return anchos
 
-    ancho_maximo = _ancho_maximo_de_linea(datos)
-    if ancho_maximo <= COLUMNAS_MAX_PITCH_CONDENSADO:
-        return datos
 
-    pitch_necesario = ancho_maximo / ANCHO_UTIL_A4_PULGADAS
-    # HMI y pitch son inversamente proporcionales: redondear el HMI "para arriba"
-    # da un pitch MENOS denso (justo lo contrario de lo que necesitamos). Por eso
-    # se redondea siempre hacia abajo, para garantizar un pitch al menos tan denso
-    # como el necesario y que la línea entre completa.
-    hmi = math.floor(120 / pitch_necesario)
-    comando_pitch_a_medida = b"\x1b&k" + str(hmi).encode("ascii") + b"H"
-    return datos.replace(PCL_PITCH_CONDENSADO, comando_pitch_a_medida)
+def asegurar_ancho_de_pitch(datos: bytes) -> bytes:
+    """Si alguno de los pitches estándar (normal o condensado) no alcanza para
+    la línea más ancha de sus propios tramos, lo reemplaza por un pitch a
+    medida calculado para que esa línea entre completa en el ancho útil de
+    A4. Tramos que ya entran, o pitches que el documento no usa, quedan sin
+    tocar.
+
+    Usa el comando PCL de selección de fuente por pitch (`ESC(s0p#h0s0b0T`,
+    grupo "(s" — HP PCL5 Technical Reference / IBM "Breakdown of HP PCL5 Font
+    Strings"), no el HMI puro (`ESC&k#H`). El HMI sólo mueve el cursor sin
+    reseleccionar la fuente ("HMI will not alter the point size of your
+    fonts"), así que si el glifo real es más ancho que el nuevo espaciado los
+    caracteres quedan superpuestos e ilegibles — se probó y pasaba exactamente
+    eso. El comando de selección de fuente sí reescala el glifo, confirmado
+    con una línea de calibración: sin superposición y sin cortes, exacto al
+    límite calculado.
+    """
+    anchos_maximos = _anchos_maximos_por_pitch(datos)
+
+    for comando, cpi_estandar in _CPI_POR_COMANDO_PITCH.items():
+        ancho_maximo = anchos_maximos.get(comando, 0)
+        columnas_max_estandar = math.floor(ANCHO_UTIL_A4_PULGADAS * cpi_estandar)
+        if ancho_maximo <= columnas_max_estandar:
+            continue
+
+        ancho_util_con_colchon = ANCHO_UTIL_A4_PULGADAS - MARGEN_SEGURIDAD_PULGADAS
+        pitch_necesario = ancho_maximo / ancho_util_con_colchon
+        comando_a_medida = (
+            b"\x1b(s0p" + f"{pitch_necesario:.4f}".encode("ascii") + b"h0s0b0T"
+        )
+        if comando in datos:
+            datos = datos.replace(comando, comando_a_medida)
+        elif comando == PCL_PITCH_NORMAL:
+            # El documento nunca manda el toggle normal explícito (usa el
+            # default implícito de gpcl6, que mide igual) pero igual necesita
+            # achicarse: no hay nada que reemplazar, se antepone al principio.
+            datos = comando_a_medida + datos
+
+    return datos

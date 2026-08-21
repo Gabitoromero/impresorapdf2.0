@@ -8,7 +8,7 @@ from typing import Optional
 
 from codigo_barras import extraer_codigo_de_barras
 from pcl_preprocessor import (
-    asegurar_ancho_condensado,
+    asegurar_ancho_de_pitch,
     forzar_retorno_automatico,
     traducir_toggle_condensado,
 )
@@ -42,16 +42,16 @@ def convertir_txt_a_pdf(txt_path: Path, pdf_path: Path) -> Optional[str]:
     configurado por default) y sin él un LF suelto no vuelve al margen izquierdo,
     perdiendo contenido en documentos de líneas largas (ver pcl_preprocessor.py).
 
-    Si además la línea más ancha del documento no entra en el pitch condensado
-    estándar (16.67cpi, ~130 columnas útiles en A4), se calcula un pitch a medida
-    (comando PCL HMI) para que entre completa en vez de cortarse (ver
-    asegurar_ancho_condensado en pcl_preprocessor.py).
+    Si además la línea más ancha de algún tramo (normal o condensado) no entra
+    en su pitch estándar (10cpi / 16.67cpi, según el ancho útil de A4), se
+    calcula un pitch de fuente a medida para ese tramo, para que entre completa
+    en vez de cortarse (ver asegurar_ancho_de_pitch en pcl_preprocessor.py).
     """
     datos_sin_codigo_barras, digitos_codigo_barras = extraer_codigo_de_barras(
         txt_path.read_bytes()
     )
     datos_traducidos = traducir_toggle_condensado(datos_sin_codigo_barras)
-    datos_traducidos = asegurar_ancho_condensado(datos_traducidos)
+    datos_traducidos = asegurar_ancho_de_pitch(datos_traducidos)
     datos_traducidos = forzar_retorno_automatico(datos_traducidos)
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as txt_temporal:
