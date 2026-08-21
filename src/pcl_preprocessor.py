@@ -16,9 +16,22 @@ CHR_CONDENSADO_OFF = 0x12
 PCL_PITCH_CONDENSADO = b"\x1b&k2S"  # wlcsi: "LETRA COMPRIMIDA 16.67"
 PCL_PITCH_NORMAL = b"\x1b&k0S"  # wlcno: "DESCOMPRIMIR LETRA"
 
+# wterlin en setlaser.i: Line Termination = 2 (un LF también hace CR). Algunos TXT
+# reales (ej. listados como "Subdiario I.V.A. Ventas") no lo mandan porque dependen
+# de que la impresora física ya lo tenga configurado por default en su firmware.
+# gpcl6 no replica ese default: sin este comando, un LF suelto (sin \r) solo baja el
+# cursor y NO vuelve al margen izquierdo, así que en líneas largas el texto siguiente
+# termina cayendo fuera de la página. Se antepone siempre, sea cual sea el documento.
+PCL_LINE_TERMINATION_AUTO_CR = b"\x1b&k2G"
+
 
 def traducir_toggle_condensado(datos: bytes) -> bytes:
     """Reemplaza CHR(15)/CHR(18) sueltos por los comandos PCL de pitch equivalentes."""
     datos = datos.replace(bytes([CHR_CONDENSADO_ON]), PCL_PITCH_CONDENSADO)
     datos = datos.replace(bytes([CHR_CONDENSADO_OFF]), PCL_PITCH_NORMAL)
     return datos
+
+
+def forzar_retorno_automatico(datos: bytes) -> bytes:
+    """Antepone el comando PCL que hace que un LF también vuelva al margen izquierdo."""
+    return PCL_LINE_TERMINATION_AUTO_CR + datos

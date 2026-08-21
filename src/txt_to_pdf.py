@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from codigo_barras import extraer_codigo_de_barras
-from pcl_preprocessor import traducir_toggle_condensado
+from pcl_preprocessor import forzar_retorno_automatico, traducir_toggle_condensado
 
 GPCL6_BIN = os.environ.get("GPCL6_BIN", "gpcl6")
 
@@ -32,11 +32,17 @@ def convertir_txt_a_pdf(txt_path: Path, pdf_path: Path) -> Optional[str]:
     (toggle de modo condensado, legado de impresoras de matriz de puntos que Marce
     sigue usando) a su comando PCL real equivalente (ver pcl_preprocessor.py) —
     gpcl6 no reconoce esos bytes sueltos como comando de tamaño de letra.
+
+    También se antepone el comando PCL de retorno automático (`ESC&k2G`), porque no
+    todos los TXT reales lo traen (dependen de que la impresora física lo tenga
+    configurado por default) y sin él un LF suelto no vuelve al margen izquierdo,
+    perdiendo contenido en documentos de líneas largas (ver pcl_preprocessor.py).
     """
     datos_sin_codigo_barras, digitos_codigo_barras = extraer_codigo_de_barras(
         txt_path.read_bytes()
     )
     datos_traducidos = traducir_toggle_condensado(datos_sin_codigo_barras)
+    datos_traducidos = forzar_retorno_automatico(datos_traducidos)
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as txt_temporal:
         txt_temporal.write(datos_traducidos)
