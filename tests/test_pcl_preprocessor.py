@@ -3,7 +3,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from pcl_preprocessor import forzar_retorno_automatico, traducir_toggle_condensado
+from pcl_preprocessor import (
+    asegurar_ancho_condensado,
+    forzar_retorno_automatico,
+    traducir_toggle_condensado,
+)
 
 PCL_CONDENSADO = b"\x1b&k2S"  # wlcsi en setlaser.i: "LETRA COMPRIMIDA 16.67"
 PCL_NORMAL = b"\x1b&k0S"  # wlcno en setlaser.i: "DESCOMPRIMIR LETRA"
@@ -50,3 +54,28 @@ def test_antepone_retorno_automatico_al_principio_del_documento():
     resultado = forzar_retorno_automatico(datos)
 
     assert resultado == PCL_LINE_TERMINATION_AUTO_CR + datos
+
+
+def test_no_toca_documento_sin_pitch_condensado():
+    datos = b"factura corta, sin condensado\notra linea"
+
+    assert asegurar_ancho_condensado(datos) == datos
+
+
+def test_no_toca_documento_condensado_que_ya_entra():
+    linea_130_columnas = ("0" * 130).encode()
+    datos = PCL_CONDENSADO + linea_130_columnas
+
+    assert asegurar_ancho_condensado(datos) == datos
+
+
+def test_achica_pitch_condensado_si_la_linea_mas_ancha_no_entra():
+    linea_137_columnas = ("0" * 137).encode()
+    datos = PCL_CONDENSADO + linea_137_columnas + b"\notra corta"
+
+    resultado = asegurar_ancho_condensado(datos)
+
+    assert PCL_CONDENSADO not in resultado
+    assert resultado.endswith(linea_137_columnas + b"\notra corta")
+    # 137 columnas / 7.8 pulgadas utiles = ~17.56cpi -> HMI = floor(120/17.56) = 6
+    assert resultado.startswith(b"\x1b&k6H")

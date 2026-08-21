@@ -7,7 +7,11 @@ from pathlib import Path
 from typing import Optional
 
 from codigo_barras import extraer_codigo_de_barras
-from pcl_preprocessor import forzar_retorno_automatico, traducir_toggle_condensado
+from pcl_preprocessor import (
+    asegurar_ancho_condensado,
+    forzar_retorno_automatico,
+    traducir_toggle_condensado,
+)
 
 GPCL6_BIN = os.environ.get("GPCL6_BIN", "gpcl6")
 
@@ -37,11 +41,17 @@ def convertir_txt_a_pdf(txt_path: Path, pdf_path: Path) -> Optional[str]:
     todos los TXT reales lo traen (dependen de que la impresora física lo tenga
     configurado por default) y sin él un LF suelto no vuelve al margen izquierdo,
     perdiendo contenido en documentos de líneas largas (ver pcl_preprocessor.py).
+
+    Si además la línea más ancha del documento no entra en el pitch condensado
+    estándar (16.67cpi, ~130 columnas útiles en A4), se calcula un pitch a medida
+    (comando PCL HMI) para que entre completa en vez de cortarse (ver
+    asegurar_ancho_condensado en pcl_preprocessor.py).
     """
     datos_sin_codigo_barras, digitos_codigo_barras = extraer_codigo_de_barras(
         txt_path.read_bytes()
     )
     datos_traducidos = traducir_toggle_condensado(datos_sin_codigo_barras)
+    datos_traducidos = asegurar_ancho_condensado(datos_traducidos)
     datos_traducidos = forzar_retorno_automatico(datos_traducidos)
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as txt_temporal:
