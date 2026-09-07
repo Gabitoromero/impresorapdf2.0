@@ -21,3 +21,6 @@ build/
 # Client materials (not for repo)
 chatMarceIA.pdf
 archivos/
+
+# Deploy artifacts
+exportarRepoEnServidor/
