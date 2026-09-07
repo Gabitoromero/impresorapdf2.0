@@ -14,6 +14,7 @@ punto de venta(4) + CAE(14) + vencimiento CAE(8) + dígito verificador(1) = 40.
 """
 
 import io
+import logging
 import re
 from pathlib import Path
 from typing import Optional, Tuple
@@ -24,8 +25,17 @@ from PIL import Image
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
+logger = logging.getLogger(__name__)
+
+LARGO_CAE_AFIP = 40  # CUIT(11) + tipo(2) + punto de venta(4) + CAE(14) + vencimiento(8) + DV(1)
+
 PREFIJO_CODIGO_BARRAS = bytes([27, 40, 66])  # ESC ( B
-_LARGO_PARAMETROS = 8  # n1, n2, k, m, s, v1, v2, c (formato fijo del comando Epson ESC/P2)
+# Medido byte a byte contra los 13 TXT reales de archivos/TXT: el bloque de
+# parámetros que realmente emite el sistema de Marce es siempre 5 bytes
+# idénticos (0x2e 0x01 0x02 0x02 0xfe), no los 8 que sugiere el manual de
+# Epson (n1,n2,k,m,s,v1,v2,c). Con 8 bytes el regex se comía los primeros 3
+# dígitos del CAE como si fueran parámetros, truncando el código de barras.
+_LARGO_PARAMETROS = 5
 _PATRON = re.compile(re.escape(PREFIJO_CODIGO_BARRAS) + rb".{%d}([0-9]+)\x0c?" % _LARGO_PARAMETROS, re.DOTALL)
 
 CODBARRAS_ALTO = 58
@@ -42,6 +52,13 @@ def extraer_codigo_de_barras(datos: bytes) -> Tuple[bytes, Optional[str]]:
         return datos, None
 
     digitos = coincidencia.group(1).decode("ascii")
+    if len(digitos) != LARGO_CAE_AFIP:
+        logger.warning(
+            "Código de barras con %d dígitos (se esperaban %d para un CAE AFIP): %s",
+            len(digitos),
+            LARGO_CAE_AFIP,
+            digitos,
+        )
     datos_limpios = datos[: coincidencia.start()] + datos[coincidencia.end() :]
     return datos_limpios, digitos
 

@@ -35,3 +35,21 @@ def test_convierte_sin_qr_no_falla_y_no_agrega_imagenes(tmp_path):
 
     pagina = PdfReader(pdf_path).pages[0]
     assert len(pagina.images) == 0
+
+
+def test_avisa_por_stderr_si_codigo_de_barras_no_tiene_40_digitos(tmp_path):
+    prefijo_codigo_barras = bytes([27, 40, 66, 46, 1, 2, 2, 254])  # ESC(B + 5 bytes de parametros
+    txt_path = tmp_path / "entrada.txt"
+    txt_path.write_bytes(b"Hola Marce\n" + prefijo_codigo_barras + b"30707191\x0c")
+
+    pdf_path = tmp_path / "salida.pdf"
+
+    resultado = subprocess.run(
+        [sys.executable, str(SRC_MAIN), "--txt", str(txt_path), "--out", str(pdf_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert resultado.returncode == 0, resultado.stderr
+    assert "8 dígitos" in resultado.stderr
+    assert "40" in resultado.stderr

@@ -1,11 +1,14 @@
 """Punto de entrada: recibe TXT (+ QR opcional) y genera el PDF de salida."""
 
 import argparse
+import logging
 from pathlib import Path
 
 from codigo_barras import insertar_codigo_de_barras
 from qr_overlay import insertar_qr
 from txt_to_pdf import convertir_txt_a_pdf
+
+logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 
 
 def parse_args() -> argparse.Namespace:

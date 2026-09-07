@@ -15,18 +15,15 @@ from codigo_barras import (
     insertar_codigo_de_barras,
 )
 
-# Comando real ESC/P2 de Epson que arma Progress (confirmado por Marce y contra el manual
-# oficial de Epson: ESC ( B n1 n2 k m s v1 v2 c data).
+# Comando real ESC/P2 de Epson que arma Progress. El bloque de parámetros
+# medido byte a byte contra los 13 TXT reales de archivos/TXT es siempre
+# idéntico (5 bytes), no los 8 que sugiere el manual de Epson (n1,n2,k,m,s,
+# v1,v2,c) — el sistema de Marce no emite v1/v2/c como bytes separados.
 # chr(27)+chr(40)+chr(66) = ESC ( B (inicio del comando)
-# chr(46)+chr(1) = n1, n2 (cantidad de bytes que siguen)
-# chr(2) = k -> tipo de codigo: 2 = Interleaved 2 of 5 (el que exige AFIP)
-# chr(2) = m -> ancho de modulo
-# chr(254) = s -> ajuste de espaciado
-# chr(54)+chr(0) = v1, v2 -> alto de barra
-# chr(0) = c -> flags de control
-# después de estos 8 bytes de parámetros viene el dato (los dígitos a codificar)
+# chr(46)+chr(1)+chr(2)+chr(2)+chr(254) = 5 bytes de parámetros reales
+# después de estos 5 bytes viene el dato (los dígitos a codificar)
 PREFIJO = bytes([27, 40, 66])
-PARAMETROS = bytes([46, 1, 2, 2, 254, 54, 0, 0])
+PARAMETROS = bytes([46, 1, 2, 2, 254])
 DIGITOS_REALES = "3071858073700100002863387828410622026082"
 
 
@@ -48,6 +45,30 @@ def test_no_encuentra_nada_si_no_hay_comando():
 
     assert digitos is None
     assert datos_limpios == datos
+
+
+def test_avisa_si_el_codigo_no_tiene_40_digitos(caplog):
+    digitos_incompletos = "30707191"  # CAE recortado, visto en TXT reales de Marce
+    comando_completo = PREFIJO + PARAMETROS + digitos_incompletos.encode()
+    datos = comando_completo + b"\x0c"
+
+    with caplog.at_level("WARNING"):
+        _, digitos = extraer_codigo_de_barras(datos)
+
+    assert digitos == digitos_incompletos
+    assert len(caplog.records) == 1
+    assert "40" in caplog.text
+    assert digitos_incompletos in caplog.text
+
+
+def test_no_avisa_si_el_codigo_tiene_40_digitos(caplog):
+    comando_completo = PREFIJO + PARAMETROS + DIGITOS_REALES.encode()
+    datos = comando_completo + b"\x0c"
+
+    with caplog.at_level("WARNING"):
+        extraer_codigo_de_barras(datos)
+
+    assert len(caplog.records) == 0
 
 
 def test_genera_una_imagen_itf_valida(tmp_path):
