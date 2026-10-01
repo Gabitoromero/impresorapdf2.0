@@ -1,6 +1,8 @@
 """Inserción de imagen QR en el PDF (Requisito: Parámetros de entrada)."""
 
 import io
+import math
+import os
 from pathlib import Path
 from typing import Tuple
 
@@ -9,16 +11,35 @@ from reportlab.pdfgen import canvas
 
 QR_ANCHO = 80
 QR_ALTO = 80
-QR_MARGEN = 15
+QR_MARGEN_X = 15
+QR_MARGEN_Y_DEFAULT = 15
+QR_MARGEN_Y_ENV = "QR_MARGEN_Y"
+
+
+def _margen_inferior() -> float:
+    """Margen inferior del QR en puntos; configurable por servidor vía variable de entorno."""
+    valor = os.environ.get(QR_MARGEN_Y_ENV)
+    if valor is None:
+        return QR_MARGEN_Y_DEFAULT
+    try:
+        margen = float(valor)
+    except ValueError:
+        margen = float("nan")
+    if not math.isfinite(margen) or margen < 0:
+        raise ValueError(
+            "{} debe ser un número finito mayor o igual a 0 (puntos), se recibió: {!r}".format(QR_MARGEN_Y_ENV, valor)
+        )
+    return margen
 
 
 def calcular_posicion_qr() -> Tuple[float, float]:
     """Esquina inferior izquierda del QR, fijo en la esquina inferior izquierda de la página.
 
     Va a la izquierda (no a la derecha) porque Marce agrega el código de barras
-    del lado derecho de la hoja.
+    del lado derecho de la hoja. El margen inferior se puede subir por servidor con
+    la variable de entorno QR_MARGEN_Y (se define en el run.sh de ese servidor).
     """
-    return QR_MARGEN, QR_MARGEN
+    return QR_MARGEN_X, _margen_inferior()
 
 
 def insertar_qr(pdf_path: Path, qr_image_path: Path) -> None:
